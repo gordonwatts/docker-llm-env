@@ -23,6 +23,11 @@ fi
 REPO_DIR="/root/workspace/${OWNER}/${REPO}"
 mkdir -p "/root/workspace/${OWNER}"
 
+if [ "${DOCKER_LLM_CLEAN:-0}" = "1" ] && [ -d "${REPO_DIR}" ]; then
+    echo "Cleaning workspace: ${REPO_DIR}"
+    rm -rf "${REPO_DIR}"
+fi
+
 if [ ! -d "${REPO_DIR}/.git" ]; then
     echo "Cloning ${FORK_URL} ..."
     git clone "${FORK_URL}" "${REPO_DIR}"
@@ -38,5 +43,10 @@ cd "${REPO_DIR}"
 if [ "${DOCKER_LLM_MODE:-codex}" = "shell" ]; then
     exec bash
 else
-    exec codex
+    CODEX_FLAGS=""
+    if [ "${DOCKER_LLM_YOLO:-0}" = "1" ]; then
+        CODEX_FLAGS="--dangerously-bypass-approvals-and-sandbox"
+    fi
+    # shellcheck disable=SC2086
+    exec codex $CODEX_FLAGS
 fi

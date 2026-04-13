@@ -1,4 +1,5 @@
 import argparse
+from pathlib import Path
 
 from .config import load_config
 from .docker_manager import build_image_if_needed, run_or_attach
@@ -24,6 +25,18 @@ def main() -> None:
         action="store_true",
         help="Force rebuild of the Docker image",
     )
+    parser.add_argument(
+        "--clean",
+        action="store_true",
+        help="Delete the cloned repo inside the container and re-clone from the fork",
+    )
+    parser.add_argument(
+        "--no-yolo",
+        dest="yolo",
+        action="store_false",
+        help="Disable --dangerously-bypass-approvals-and-sandbox (enabled by default)",
+    )
+    parser.set_defaults(yolo=True)
     args = parser.parse_args()
 
     config = load_config()
@@ -40,6 +53,11 @@ def main() -> None:
 
     build_image_if_needed(force=args.rebuild)
 
+    agents_dir = Path.home() / ".agents"
+    agents_dir = agents_dir if agents_dir.is_dir() else None
+    if agents_dir:
+        print(f"Mounting ~/.agents from host: {agents_dir}")
+
     mode = "shell" if args.shell else "codex"
     run_or_attach(
         owner=upstream_owner,
@@ -48,4 +66,7 @@ def main() -> None:
         upstream_url=upstream_url,
         github_token=token,
         mode=mode,
+        agents_dir=agents_dir,
+        clean=args.clean,
+        yolo=args.yolo,
     )

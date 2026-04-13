@@ -82,6 +82,9 @@ def run_or_attach(
     upstream_url: str,
     github_token: str,
     mode: str,
+    agents_dir: Path | None = None,
+    clean: bool = False,
+    yolo: bool = False,
 ) -> None:
     name = _container_name(owner, repo)
     status = get_container_status(owner, repo)
@@ -100,6 +103,17 @@ def run_or_attach(
         "-e",
         f"DOCKER_LLM_MODE={mode}",
     ]
+    if clean:
+        env_args += ["-e", "DOCKER_LLM_CLEAN=1"]
+    if yolo:
+        env_args += ["-e", "DOCKER_LLM_YOLO=1"]
+
+    # Bind-mount ~/.agents into the container when it exists on the host.
+    # Only relevant for `docker run`; `docker exec` inherits the existing mounts.
+    agents_mount: list[str] = []
+    if agents_dir is not None:
+        host_path = str(agents_dir).replace("\\", "/")
+        agents_mount = ["-v", f"{host_path}:/root/.agents:ro"]
 
     if status == "running":
         cmd = (
@@ -122,6 +136,7 @@ def run_or_attach(
                 "-v",
                 f"{VOLUME_NAME}:/root",
             ]
+            + agents_mount
             + env_args
             + [IMAGE_TAG]
         )
