@@ -41,14 +41,24 @@ def main() -> None:
 
     config = load_config()
     token = config["GITHUB_TOKEN"]
+    preferred_fork_owner = (config.get("GITHUB_FORK_OWNER") or "").strip() or None
 
     upstream_owner, repo_name = parse_repo(args.repo)
 
     print("Authenticating with GitHub...")
-    fork_owner = get_authenticated_user(token)
-    print(f"Logged in as: {fork_owner}")
+    auth_user = get_authenticated_user(token)
+    print(f"Logged in as: {auth_user}")
 
-    fork_url = ensure_fork(token, upstream_owner, repo_name, fork_owner)
+    if preferred_fork_owner:
+        print(f"Preferred fork owner from config: {preferred_fork_owner}")
+
+    fork_url = ensure_fork(
+        token,
+        upstream_owner,
+        repo_name,
+        auth_user,
+        preferred_owner=preferred_fork_owner,
+    )
     upstream_url = f"https://github.com/{upstream_owner}/{repo_name}.git"
 
     build_image_if_needed(force=args.rebuild)

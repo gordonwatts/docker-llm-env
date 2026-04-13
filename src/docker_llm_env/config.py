@@ -23,4 +23,6 @@ def load_config() -> dict:
             "    echo 'GITHUB_TOKEN=ghp_your_token_here' >> ~/.docker-llm-env\n"
         )
 
+    # Optional: when your token can create forks in an organization but not in
+    # your personal account, set GITHUB_FORK_OWNER to that org/user login.
     return config

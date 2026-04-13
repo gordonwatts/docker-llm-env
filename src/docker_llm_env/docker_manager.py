@@ -1,4 +1,5 @@
 import importlib.resources as pkg_resources
+from importlib.resources.abc import Traversable
 import hashlib
 import re
 import shutil
@@ -12,7 +13,7 @@ VOLUME_NAME = "dlenv-home"
 RESOURCES_HASH_LABEL = "dlenv.resources-hash"
 
 
-def _resources_hash(resources_root: Path) -> str:
+def _resources_hash(resources_root: Traversable) -> str:
     hasher = hashlib.sha256()
     hasher.update((resources_root / "Dockerfile").read_bytes())
     hasher.update((resources_root / "entrypoint.sh").read_bytes())
@@ -27,7 +28,7 @@ def _image_resources_hash() -> str | None:
             "inspect",
             IMAGE_TAG,
             "--format",
-            f"{{{{ index .Config.Labels \"{RESOURCES_HASH_LABEL}\" }}}}",
+            f'{{{{ index .Config.Labels "{RESOURCES_HASH_LABEL}" }}}}',
         ],
         capture_output=True,
         text=True,
@@ -115,6 +116,30 @@ def get_container_status(owner: str, repo: str) -> str:
     return "running" if status == "running" else "stopped"
 
 
+def _container_image_id(name: str) -> str | None:
+    result = subprocess.run(
+        ["docker", "inspect", "--format", "{{.Image}}", name],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    image_id = result.stdout.strip()
+    return image_id or None
+
+
+def _current_image_id() -> str | None:
+    result = subprocess.run(
+        ["docker", "image", "inspect", "--format", "{{.Id}}", IMAGE_TAG],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    image_id = result.stdout.strip()
+    return image_id or None
+
+
 def run_or_attach(
     owner: str,
     repo: str,
@@ -128,6 +153,18 @@ def run_or_attach(
 ) -> None:
     name = _container_name(owner, repo)
     status = get_container_status(owner, repo)
+
+    # If container was created from an older image, recreate it so embedded
+    # resources (like /scripts/entrypoint.sh) match the current build.
+    if status in {"running", "stopped"}:
+        container_image = _container_image_id(name)
+        latest_image = _current_image_id()
+        if container_image and latest_image and container_image != latest_image:
+            print("Container uses an outdated image; recreating to apply updates...")
+            subprocess.run(
+                ["docker", "rm", "-f", name], capture_output=True, check=False
+            )
+            status = "missing"
 
     env_args = [
         "-e",

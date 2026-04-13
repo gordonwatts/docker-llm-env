@@ -27,6 +27,12 @@ Create `~/.docker-llm-env` with your GitHub token:
 GITHUB_TOKEN=ghp_your_token_here
 ```
 
+Optional: if your token can fork into an organization (for example `org-name`) but not your personal account, set the fork destination explicitly:
+
+```
+GITHUB_FORK_OWNER=org-name
+```
+
 ## Usage
 
 ### Run without installing (uvx)
