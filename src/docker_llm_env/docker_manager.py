@@ -1,4 +1,5 @@
 import importlib.resources as pkg_resources
+import hashlib
 import re
 import shutil
 import subprocess
@@ -8,6 +9,33 @@ from pathlib import Path
 
 IMAGE_TAG = "docker-llm-env:latest"
 VOLUME_NAME = "dlenv-home"
+RESOURCES_HASH_LABEL = "dlenv.resources-hash"
+
+
+def _resources_hash(resources_root: Path) -> str:
+    hasher = hashlib.sha256()
+    hasher.update((resources_root / "Dockerfile").read_bytes())
+    hasher.update((resources_root / "entrypoint.sh").read_bytes())
+    return hasher.hexdigest()
+
+
+def _image_resources_hash() -> str | None:
+    result = subprocess.run(
+        [
+            "docker",
+            "image",
+            "inspect",
+            IMAGE_TAG,
+            "--format",
+            f"{{{{ index .Config.Labels \"{RESOURCES_HASH_LABEL}\" }}}}",
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return None
+    value = result.stdout.strip()
+    return value or None
 
 
 def _container_name(owner: str, repo: str) -> str:
@@ -32,6 +60,9 @@ def _check_docker() -> None:
 def build_image_if_needed(force: bool = False) -> None:
     _check_docker()
 
+    resources = pkg_resources.files("docker_llm_env") / "resources"
+    expected_hash = _resources_hash(resources)
+
     if not force:
         result = subprocess.run(
             ["docker", "images", "-q", IMAGE_TAG],
@@ -39,11 +70,12 @@ def build_image_if_needed(force: bool = False) -> None:
             text=True,
         )
         if result.stdout.strip():
-            return  # Image already exists
+            current_hash = _image_resources_hash()
+            if current_hash == expected_hash:
+                return  # Image already exists and resources match current package
 
     print("Building Docker image (this takes a few minutes on first run)...")
 
-    resources = pkg_resources.files("docker_llm_env") / "resources"
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
         (tmp / "Dockerfile").write_bytes((resources / "Dockerfile").read_bytes())
@@ -53,7 +85,15 @@ def build_image_if_needed(force: bool = False) -> None:
             (resources / "entrypoint.sh").read_bytes()
         )
         result = subprocess.run(
-            ["docker", "build", "-t", IMAGE_TAG, str(tmp)],
+            [
+                "docker",
+                "build",
+                "--label",
+                f"{RESOURCES_HASH_LABEL}={expected_hash}",
+                "-t",
+                IMAGE_TAG,
+                str(tmp),
+            ],
             check=False,
         )
         if result.returncode != 0:
