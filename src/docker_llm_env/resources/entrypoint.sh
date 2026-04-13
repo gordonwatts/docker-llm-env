@@ -46,6 +46,7 @@ else
     CODEX_FLAGS=""
     if [ "${DOCKER_LLM_YOLO:-0}" = "1" ]; then
         CODEX_FLAGS="--dangerously-bypass-approvals-and-sandbox"
+        echo "WARNING: Running in YOLO mode with no approvals or sandbox! Use only in trusted environments."
     fi
     # shellcheck disable=SC2086
     exec codex $CODEX_FLAGS
