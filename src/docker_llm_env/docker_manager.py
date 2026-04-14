@@ -13,10 +13,16 @@ VOLUME_NAME = "dlenv-home"
 RESOURCES_HASH_LABEL = "dlenv.resources-hash"
 
 
+def _normalized_resource_bytes(resource: Traversable) -> bytes:
+    # Ensure text resources are written with LF line endings inside Docker build
+    # context even when the local checkout uses CRLF on Windows.
+    return resource.read_bytes().replace(b"\r\n", b"\n")
+
+
 def _resources_hash(resources_root: Traversable) -> str:
     hasher = hashlib.sha256()
-    hasher.update((resources_root / "Dockerfile").read_bytes())
-    hasher.update((resources_root / "entrypoint.sh").read_bytes())
+    hasher.update(_normalized_resource_bytes(resources_root / "Dockerfile"))
+    hasher.update(_normalized_resource_bytes(resources_root / "entrypoint.sh"))
     return hasher.hexdigest()
 
 
@@ -79,11 +85,13 @@ def build_image_if_needed(force: bool = False) -> None:
 
     with tempfile.TemporaryDirectory() as tmpdir:
         tmp = Path(tmpdir)
-        (tmp / "Dockerfile").write_bytes((resources / "Dockerfile").read_bytes())
+        (tmp / "Dockerfile").write_bytes(
+            _normalized_resource_bytes(resources / "Dockerfile")
+        )
         scripts_dir = tmp / "scripts"
         scripts_dir.mkdir()
         (scripts_dir / "entrypoint.sh").write_bytes(
-            (resources / "entrypoint.sh").read_bytes()
+            _normalized_resource_bytes(resources / "entrypoint.sh")
         )
         result = subprocess.run(
             [
