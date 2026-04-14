@@ -1,6 +1,8 @@
 FROM ubuntu:24.04
 
 ENV DEBIAN_FRONTEND=noninteractive
+ENV PLAYWRIGHT_BROWSERS_PATH=/usr/local/share/playwright-browsers
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 # System packages
 RUN apt-get update && apt-get install -y \
@@ -32,6 +34,11 @@ RUN curl -fsSL https://deb.nodesource.com/setup_22.x | bash - \
 
 # Codex CLI — always latest published release
 RUN npm install -g @openai/codex && npm cache clean --force
+
+# Playwright Chromium — binaries baked into the image layer so agent projects
+# can install the playwright Python package (uv add --dev playwright) and run
+# headless-browser tests without downloading anything at test time.
+RUN uvx playwright install --with-deps chromium
 
 COPY scripts/entrypoint.sh /scripts/entrypoint.sh
 RUN chmod +x /scripts/entrypoint.sh

@@ -7,6 +7,24 @@ if [ ! -f /root/.codex/config.toml ]; then
     echo 'cli_auth_credentials_store = "file"' > /root/.codex/config.toml
 fi
 
+# Append playwright guidance once (idempotent — keyed by marker comment).
+# This runs on every start so existing volumes get the update automatically.
+# Skip if already injected OR if the user has custom instructions (avoid duplicate TOML keys).
+if ! grep -q '#playwright-binaries-note' /root/.codex/config.toml 2>/dev/null && \
+    ! grep -q '^instructions' /root/.codex/config.toml 2>/dev/null; then
+    cat >> /root/.codex/config.toml << 'TOML'
+
+instructions = """
+#playwright-binaries-note
+Chromium browser binaries are pre-installed in this container at the path
+set by PLAYWRIGHT_BROWSERS_PATH. To write headless-browser tests:
+    1. Add playwright to the project: uv add --dev playwright
+    2. Do NOT run 'playwright install' — the binaries are already present.
+    3. Use sync_playwright or async_playwright from playwright.sync_api / playwright.async_api.
+"""
+TOML
+fi
+
 # ── GitHub CLI authentication ──────────────────────────────────────────────────
 echo "${GITHUB_TOKEN}" | gh auth login --with-token --git-protocol https 2>/dev/null || true
 gh auth setup-git 2>/dev/null || true
