@@ -1,0 +1,15 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "docker-llm-env"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = ["httpx", "python-dotenv"]
+
+[project.scripts]
+docker-llm-env = "docker_llm_env.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/docker_llm_env"]
