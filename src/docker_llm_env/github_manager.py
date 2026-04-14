@@ -32,7 +32,12 @@ def _headers(token: str) -> dict:
 
 
 def get_authenticated_user(token: str) -> str:
-    resp = httpx.get("https://api.github.com/user", headers=_headers(token))
+    try:
+        resp = httpx.get("https://api.github.com/user", headers=_headers(token))
+    except httpx.ConnectError as exc:
+        raise SystemExit(
+            f"Could not reach api.github.com — check your network connection.\n({exc})"
+        ) from None
     if resp.status_code == 401:
         raise SystemExit(
             "GitHub authentication failed. Check your GITHUB_TOKEN in ~/.docker-llm-env"

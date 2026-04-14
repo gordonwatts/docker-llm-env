@@ -39,6 +39,46 @@ fi
 
 cd "${REPO_DIR}"
 
+# ── Sync fork's default branch with upstream ───────────────────────────────────
+# Only when an upstream remote exists (i.e. this is a real fork, not a direct clone).
+# The entire block is non-fatal — a transient failure here must not prevent launch.
+if git remote get-url upstream > /dev/null 2>&1; then
+    echo "Fetching upstream..."
+    if ! GIT_TERMINAL_PROMPT=0 git fetch upstream --quiet 2>/dev/null; then
+        echo "Warning: could not fetch upstream — skipping sync."
+    else
+        # Discover upstream's default branch directly from the remote.
+        # `git ls-remote --symref` is reliable; `remote set-head --auto` is not.
+        DEFAULT_BRANCH=$(GIT_TERMINAL_PROMPT=0 git ls-remote --symref upstream HEAD 2>/dev/null \
+            | grep '^ref:' \
+            | sed 's|^ref: refs/heads/||;s|\tHEAD$||')
+
+        if [ -z "${DEFAULT_BRANCH}" ]; then
+            echo "Warning: could not determine upstream default branch — skipping sync."
+        else
+            LOCAL=$(git rev-parse "${DEFAULT_BRANCH}" 2>/dev/null || true)
+            UPSTREAM_REF=$(git rev-parse "upstream/${DEFAULT_BRANCH}" 2>/dev/null || true)
+
+            if [ -z "${LOCAL}" ] || [ -z "${UPSTREAM_REF}" ]; then
+                echo "Could not resolve ${DEFAULT_BRANCH} — skipping sync."
+            elif [ "${LOCAL}" = "${UPSTREAM_REF}" ]; then
+                echo "Fork's ${DEFAULT_BRANCH} is already up to date with upstream."
+            elif git merge-base --is-ancestor "${LOCAL}" "${UPSTREAM_REF}"; then
+                # Local is strictly behind upstream — safe to fast-forward.
+                CURRENT_BRANCH=$(git symbolic-ref --short HEAD 2>/dev/null || true)
+                if [ "${CURRENT_BRANCH}" = "${DEFAULT_BRANCH}" ]; then
+                    git merge --ff-only "upstream/${DEFAULT_BRANCH}" --quiet
+                else
+                    git fetch . "upstream/${DEFAULT_BRANCH}:${DEFAULT_BRANCH}" --quiet
+                fi
+                echo "Synced ${DEFAULT_BRANCH} with upstream (fast-forward)."
+            else
+                echo "Warning: fork's ${DEFAULT_BRANCH} has diverged from upstream — skipping automatic sync."
+            fi
+        fi
+    fi
+fi
+
 # ── Launch ─────────────────────────────────────────────────────────────────────
 if [ "${DOCKER_LLM_MODE:-codex}" = "shell" ]; then
     exec bash
