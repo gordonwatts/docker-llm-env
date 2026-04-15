@@ -14,22 +14,28 @@ Given a GitHub repo, `docker-llm-env` will:
 
 The container and its home directory (`~/.codex` auth, git config, cloned repos) persist across runs via a Docker volume, so authentication and workspace state are preserved.
 
+The environment also mounts the host Docker daemon socket into the container, so `docker` commands run inside the container against the same daemon as the host.
+
+This is always on. Access to the Docker daemon is effectively host-level control, so only use this tool on machines where that trust boundary is acceptable.
+
 ## Prerequisites
 
 - [Docker](https://docs.docker.com/get-docker/) installed and running
+- Docker must expose `/var/run/docker.sock` to the environment that launches `docker-llm-env`
+- On Windows, use Docker Desktop with WSL2-backed Linux containers
 - A GitHub personal access token with `repo` scope
 
 ## Configuration
 
 Create `~/.docker-llm-env` with your GitHub token:
 
-```
+```sh
 GITHUB_TOKEN=ghp_your_token_here
 ```
 
 Optional: if your token can fork into an organization (for example `org-name`) but not your personal account, set the fork destination explicitly:
 
-```
+```sh
 GITHUB_FORK_OWNER=org-name
 ```
 
@@ -83,5 +89,7 @@ uvx --from git+https://github.com/gordonwatts/docker-llm-env docker-llm-env http
 ### Re-attaching
 
 If the container is already running, the same command transparently re-attaches to it via `docker exec` — no duplicate containers are created.
+
+If an existing container was created before the Docker socket mount was added, `docker-llm-env` recreates it automatically so the runtime environment matches the current image and launch contract.
 
 ## Getting Started
