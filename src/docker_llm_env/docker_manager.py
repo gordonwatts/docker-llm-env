@@ -11,6 +11,7 @@ from pathlib import Path
 IMAGE_TAG = "docker-llm-env:latest"
 VOLUME_NAME = "dlenv-home"
 RESOURCES_HASH_LABEL = "dlenv.resources-hash"
+DOCKER_SOCKET_PATH = "/var/run/docker.sock"
 
 
 def _normalized_resource_bytes(resource: Traversable) -> bytes:
@@ -61,6 +62,18 @@ def _check_docker() -> None:
         raise SystemExit(
             "Docker daemon is not running.\n"
             "Start Docker Desktop (or run: sudo systemctl start docker)"
+        )
+    os_type = subprocess.run(
+        ["docker", "info", "--format", "{{.OSType}}"],
+        capture_output=True,
+        text=True,
+    )
+    if os_type.returncode == 0 and os_type.stdout.strip().lower() != "linux":
+        raise SystemExit(
+            "Unsupported Docker daemon mode: Windows containers.\n"
+            "docker-llm-env requires a Linux Docker daemon with "
+            "/var/run/docker.sock passthrough.\n"
+            "On Windows, switch Docker Desktop to WSL2-backed Linux containers."
         )
 
 
@@ -148,6 +161,37 @@ def _current_image_id() -> str | None:
     return image_id or None
 
 
+def _container_has_mount(name: str, destination: str) -> bool:
+    result = subprocess.run(
+        [
+            "docker",
+            "inspect",
+            "--format",
+            "{{range .Mounts}}{{println .Destination}}{{end}}",
+            name,
+        ],
+        capture_output=True,
+        text=True,
+    )
+    if result.returncode != 0:
+        return False
+    mounts = {line.strip() for line in result.stdout.splitlines() if line.strip()}
+    return destination in mounts
+
+
+def _validate_docker_socket_mount() -> None:
+    if sys.platform == "win32":
+        return
+    if Path(DOCKER_SOCKET_PATH).exists():
+        return
+    raise SystemExit(
+        "Docker daemon socket is not available at /var/run/docker.sock.\n"
+        "docker-llm-env now always passes the host Docker daemon through to the container.\n"
+        "On Windows, use Docker Desktop with WSL2-backed Linux containers.\n"
+        "On Linux, ensure the Docker daemon exposes /var/run/docker.sock."
+    )
+
+
 def run_or_attach(
     owner: str,
     repo: str,
@@ -169,6 +213,14 @@ def run_or_attach(
         latest_image = _current_image_id()
         if container_image and latest_image and container_image != latest_image:
             print("Container uses an outdated image; recreating to apply updates...")
+            subprocess.run(
+                ["docker", "rm", "-f", name], capture_output=True, check=False
+            )
+            status = "missing"
+        elif not _container_has_mount(name, DOCKER_SOCKET_PATH):
+            print(
+                "Container is missing the Docker socket mount; recreating to apply updates..."
+            )
             subprocess.run(
                 ["docker", "rm", "-f", name], capture_output=True, check=False
             )
@@ -207,6 +259,7 @@ def run_or_attach(
             + [name, "/bin/bash", "/scripts/entrypoint.sh"]
         )
     else:
+        _validate_docker_socket_mount()
         if status == "stopped":
             # Remove stale stopped container; volume preserves all state
             subprocess.run(["docker", "rm", name], capture_output=True, check=False)
@@ -220,6 +273,8 @@ def run_or_attach(
                 name,
                 "-v",
                 f"{VOLUME_NAME}:/root",
+                "-v",
+                f"{DOCKER_SOCKET_PATH}:{DOCKER_SOCKET_PATH}",
             ]
             + agents_mount
             + env_args
