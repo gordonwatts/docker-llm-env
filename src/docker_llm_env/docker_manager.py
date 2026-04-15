@@ -63,6 +63,18 @@ def _check_docker() -> None:
             "Docker daemon is not running.\n"
             "Start Docker Desktop (or run: sudo systemctl start docker)"
         )
+    os_type = subprocess.run(
+        ["docker", "info", "--format", "{{.OSType}}"],
+        capture_output=True,
+        text=True,
+    )
+    if os_type.returncode == 0 and os_type.stdout.strip().lower() != "linux":
+        raise SystemExit(
+            "Unsupported Docker daemon mode: Windows containers.\n"
+            "docker-llm-env requires a Linux Docker daemon with "
+            "/var/run/docker.sock passthrough.\n"
+            "On Windows, switch Docker Desktop to WSL2-backed Linux containers."
+        )
 
 
 def build_image_if_needed(force: bool = False) -> None:
